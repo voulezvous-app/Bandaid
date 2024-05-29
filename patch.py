@@ -48,6 +48,28 @@ def fix_cocktail_ingredients_liquor_to_liqueur():
     print(f'Updated {ingredients_updated} ingredients in {cocktails_updated} cocktails')
 
 
+@command
+def reset_alcohol_counters():
+    alcohols_ref = db.collection('Alcohols')
+
+    docs = list(alcohols_ref.stream())
+    alcohols_updated = 0
+    print('number of alcohols:', len(docs))
+    for doc in docs:
+        alcohol_data = doc.to_dict()
+
+        # Set 'clickCounter' to 0
+        alcohol_data['clickCounter'] = 0
+        alcohol_data['savedCounter'] = 0
+        alcohol_data['clickCounterWeekly'] = 0
+
+        # Update the document in Firestore
+        alcohols_ref.document(doc.id).set(alcohol_data)
+        alcohols_updated += 1
+
+    print(f'Updated {alcohols_updated} alcohols')
+
+
 # End of the patches
 
 @click.command()
