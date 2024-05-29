@@ -1,6 +1,9 @@
 # Bandaid
 A simple tool to write patches for the VoulezVous Firestore database.
 
+![bandaid](https://github.com/voulezvous-app/Bandaid/assets/70067036/179b46b6-90b5-4191-bc60-6ea7a61a0e7b)
+
+
 ## Setup
 - Create a virtual environment and install the dependencies.
 ```bash
