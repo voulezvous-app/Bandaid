@@ -1,7 +1,10 @@
 from datetime import datetime
 from devtools import debug
+from tqdm import tqdm
 
 from firebase_setup import db
+from openai_setup import client
+
 import click
 
 commands = []
@@ -68,6 +71,51 @@ def reset_alcohol_counters():
         alcohols_updated += 1
 
     print(f'Updated {alcohols_updated} alcohols')
+
+
+@command
+def change_alcohols_set_liqueur_with_openai():
+    alcohols_ref = db.collection('Alcohols')
+
+    docs = list(alcohols_ref.stream())
+    alcohols_updated = 0
+    set_false_counter = 0
+    set_true_counter = 0
+    print('number of alcohols:', len(docs))
+    for doc in tqdm(docs, desc="Processing alcohols"):
+        alcohol_data = doc.to_dict()
+
+        # delete the isLiquor field
+        if 'isLiquor' in alcohol_data:
+            del alcohol_data['isLiquor']
+
+        # ask openai whether the alcohol is a liqueur or not
+        # if it is a liqueur then set isLiqueur to True
+        # else set isLiqueur to False
+
+        completion = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role": "system", "content": "Is this a liqueur? respond with only 'True' or 'False'"},
+                {"role": "user", "content": alcohol_data['name']}
+            ]
+        )
+        response_content = completion.choices[0].message.content
+        if response_content.lower() == 'true':
+            alcohol_data['isLiqueur'] = True
+            set_true_counter += 1
+        else:
+            alcohol_data['isLiqueur'] = False
+            set_false_counter += 1
+
+        # Update the document in Firestore
+        alcohols_ref.document(doc.id).set(alcohol_data)
+        alcohols_updated += 1
+
+        # Update the document in Firestore
+        alcohols_ref.document(doc.id).set(alcohol_data)
+
+    print(f'Updated {alcohols_updated} alcohol; set True: {set_true_counter}, set False: {set_false_counter}')
 
 
 # End of the patches

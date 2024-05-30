@@ -16,6 +16,12 @@ class Settings(BaseSettings):
     g_client_x509_cert_url: str = 'https://www.googleapis.com/robot/v1/metadata/x509/firebase-adminsdk-xiqc4%40voulez-vous-97921.iam.gserviceaccount.com'
 
 
+    # OpenAi
+    openai_org_id: str = ''
+    openai_project_id: str = ''
+    openai_api_key: str = ''
+
+
     # Firebase Creds
     @property
     def firebase_credentials(self):
