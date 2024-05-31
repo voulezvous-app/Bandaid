@@ -178,6 +178,33 @@ def delete_tags_from_cocktails():
     print(f'Updated {cocktails_updated} cocktails')
 
 
+@command
+def minimize_alcohol_smell_and_taste_into_tags():
+    alcohols_ref = db.collection('Alcohols')
+
+    docs = list(alcohols_ref.stream())
+    print('number of alcohols:', len(docs))
+    alcohols_updated = 0
+    for doc in tqdm(docs, desc="Processing alcohols"):
+        alcohol_data = doc.to_dict()
+        # use openai to set tags for the alcohol
+        for key in ['smell', 'taste']:
+            system_prompt = 'summarize the given sentence into an array of tags, the fewer the better, always return only one array of tags, with double quotes nothing else'
+            user_prompt = f'{alcohol_data[key]}'
+            response = askOpenAI(system_prompt, user_prompt)
+            # Check if response is not empty and is a valid JSON string
+            try:
+                alcohol_data[f'{key}_tags'] = json.loads(response)
+            except json.JSONDecodeError:
+                print(f'Invalid JSON response for {alcohol_data["name"]} {key}: {response}')
+
+        # Update the document in Firestore
+        alcohols_ref.document(doc.id).set(alcohol_data)
+        alcohols_updated += 1
+
+    print(f'Updated {alcohols_updated} alcohols')
+
+
 # End of the patches
 
 @click.command()
