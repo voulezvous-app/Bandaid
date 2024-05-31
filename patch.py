@@ -1,9 +1,12 @@
+import json
 from datetime import datetime
+
+import requests
 from devtools import debug
 from tqdm import tqdm
 
 from firebase_setup import db
-from openai_setup import client
+from openai_setup import client, askOpenAI
 
 import click
 
@@ -116,6 +119,63 @@ def change_alcohols_set_liqueur_with_openai():
         alcohols_ref.document(doc.id).set(alcohol_data)
 
     print(f'Updated {alcohols_updated} alcohol; set True: {set_true_counter}, set False: {set_false_counter}')
+
+@command
+def set_cocktails_to_tags():
+    # get tags from gist
+    try:
+        tags_json = requests.get('https://gist.githubusercontent.com/PrenSJ2/91acf1ae805de805bbaf521b62e7dfc7/raw/35a7d769f45ad263e2556d14881d656a08bb6e72/vv_tags')
+        tags = tags_json.json()
+    except Exception as e:
+        print(e)
+        return
+
+    cocktails_ref = db.collection('cocktails')
+
+    docs = list(cocktails_ref.stream())
+    print('number of docs:', len(docs))
+    cocktails_updated = 0
+    for doc in tqdm(docs, desc="Processing cocktails"):
+        cocktail_data = doc.to_dict()
+
+        print(f'--- {cocktail_data["name"]} ---')
+        # use openai to set tags for the cocktail
+        for key, values in tags.items():
+            system_prompt = f'Given the following cocktail and any additional research you can find out about the cocktail, what {key} would you give it from the following list: {values}, always return only one array of tags, with double quotes nothing else\n\n'
+            user_prompt = f'{cocktail_data}'
+            response = askOpenAI(system_prompt, user_prompt)
+            # Check if response is not empty and is a valid JSON string
+            try:
+                cocktail_data[key] = json.loads(response)
+                print(f'{key}: {cocktail_data[key]}')
+            except json.JSONDecodeError:
+                print(f'Invalid JSON response for {key}: {response}')
+
+        # Update the document in Firestore
+        cocktails_ref.document(doc.id).set(cocktail_data)
+        cocktails_updated += 1
+
+    print(f'Updated {cocktails_updated} cocktails')
+
+@command
+def delete_tags_from_cocktails():
+    cocktails_ref = db.collection('cocktails')
+
+    docs = list(cocktails_ref.stream())
+    print('number of docs:', len(docs))
+    cocktails_updated = 0
+    # docs = docs[:3]
+    for doc in tqdm(docs, desc="Processing cocktails"):
+        cocktail_data = doc.to_dict()
+        # Check if there's a 'tags' field delete it
+        if 'tags' in cocktail_data:
+            del cocktail_data['tags']
+
+        # Update the document in Firestore
+        cocktails_ref.document(doc.id).set(cocktail_data)
+        cocktails_updated += 1
+
+    print(f'Updated {cocktails_updated} cocktails')
 
 
 # End of the patches
