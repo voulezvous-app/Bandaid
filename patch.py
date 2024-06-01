@@ -205,6 +205,68 @@ def minimize_alcohol_smell_and_taste_into_tags():
     print(f'Updated {alcohols_updated} alcohols')
 
 
+@command
+def delete_misc_alcohols_fields():
+    alcohols_ref = db.collection('Alcohols')
+
+    docs = list(alcohols_ref.stream())
+    print('number of alcohols:', len(docs))
+    alcohols_deleted = 0
+    for doc in tqdm(docs, desc="Processing alcohols"):
+        alcohol_data = doc.to_dict()
+        # Patch: delete every alcohol with a description 'This product stands out due to ...'
+        if 'description' in alcohol_data and alcohol_data['description'] == 'This product stands out due to ...':
+            alcohols_ref.document(doc.id).delete()
+            alcohols_deleted += 1
+            continue
+
+
+    print(f'Deleted {alcohols_deleted} alcohols')
+
+
+@command
+def update_alcohols_countryemoji_from_country():
+    alcohols_ref = db.collection('Alcohols')
+
+    docs = list(alcohols_ref.stream())
+    print('number of alcohols:', len(docs))
+    alcohols_updated = 0
+    for doc in tqdm(docs, desc="Processing alcohols"):
+        alcohol_data = doc.to_dict()
+        # Check if there's a 'country' field
+        if 'country' in alcohol_data and alcohol_data['countryFlag'] == 'None':
+            # Get the country emoji from the country
+            system_prompt = 'given the country return only the country emoji'
+            user_prompt = f'{alcohol_data["country"]}'
+            alcohol_data['countryFlag'] = askOpenAI(system_prompt, user_prompt)
+
+            # Update the document in Firestore
+            alcohols_ref.document(doc.id).set(alcohol_data)
+            alcohols_updated += 1
+
+    print(f'Updated {alcohols_updated} alcohols')
+
+@command
+def update_england_emojis():
+    alcohols_ref = db.collection('Alcohols')
+
+    docs = list(alcohols_ref.stream())
+    print('number of alcohols:', len(docs))
+    alcohols_updated = 0
+    for doc in tqdm(docs, desc="Processing alcohols"):
+        alcohol_data = doc.to_dict()
+        # Check if there's a 'country' field
+        if 'country' in alcohol_data and alcohol_data['country'] == 'England':
+            # Get the country emoji from the country
+            alcohol_data['countryFlag'] = '🏴󠁧󠁢󠁥󠁮󠁧󠁿'
+
+            # Update the document in Firestore
+            alcohols_ref.document(doc.id).set(alcohol_data)
+            alcohols_updated += 1
+
+    print(f'Updated {alcohols_updated} England alcohols')
+
+
 # End of the patches
 
 @click.command()
