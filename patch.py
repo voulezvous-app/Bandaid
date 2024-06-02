@@ -1,14 +1,17 @@
 import json
 from datetime import datetime
 
+import cv2
 import requests
 from devtools import debug
 from tqdm import tqdm
 
-from firebase_setup import db
+from firebase_setup import db, bucket
 from openai_setup import client, askOpenAI
 
 import click
+
+from utils import remove_background
 
 commands = []
 
@@ -34,13 +37,14 @@ def fix_cocktail_ingredients_liquor_to_liqueur():
         if 'ingredients' in cocktail_data:
             for ingredient in cocktail_data['ingredients']:
                 # Check if the ingredient is a liquor
-                if 'isLiquor' in ingredient and ingredient['isLiquor']:
+                if 'isLiquor' in ingredient:
                     # Change 'isLiquor' to 'isLiqueur'
                     ingredient['isLiqueur'] = ingredient.pop('isLiquor')
+                    ingredients_updated += 1
 
-                    # Change 'liquorType' to 'liqueurType'
-                    if 'liquorType' in ingredient:
-                        ingredient['liqueurType'] = ingredient.pop('liquorType')
+                # Change 'liquorType' to 'liqueurType'
+                if 'liquorType' in ingredient:
+                    ingredient['liqueurType'] = ingredient.pop('liquorType')
 
                     ingredients_updated += 1
 
@@ -120,11 +124,13 @@ def change_alcohols_set_liqueur_with_openai():
 
     print(f'Updated {alcohols_updated} alcohol; set True: {set_true_counter}, set False: {set_false_counter}')
 
+
 @command
 def set_cocktails_to_tags():
     # get tags from gist
     try:
-        tags_json = requests.get('https://gist.githubusercontent.com/PrenSJ2/91acf1ae805de805bbaf521b62e7dfc7/raw/35a7d769f45ad263e2556d14881d656a08bb6e72/vv_tags')
+        tags_json = requests.get(
+            'https://gist.githubusercontent.com/PrenSJ2/91acf1ae805de805bbaf521b62e7dfc7/raw/35a7d769f45ad263e2556d14881d656a08bb6e72/vv_tags')
         tags = tags_json.json()
     except Exception as e:
         print(e)
@@ -156,6 +162,7 @@ def set_cocktails_to_tags():
         cocktails_updated += 1
 
     print(f'Updated {cocktails_updated} cocktails')
+
 
 @command
 def delete_tags_from_cocktails():
@@ -220,7 +227,6 @@ def delete_misc_alcohols_fields():
             alcohols_deleted += 1
             continue
 
-
     print(f'Deleted {alcohols_deleted} alcohols')
 
 
@@ -246,6 +252,7 @@ def update_alcohols_countryemoji_from_country():
 
     print(f'Updated {alcohols_updated} alcohols')
 
+
 @command
 def update_england_emojis():
     alcohols_ref = db.collection('Alcohols')
@@ -265,6 +272,64 @@ def update_england_emojis():
             alcohols_updated += 1
 
     print(f'Updated {alcohols_updated} England alcohols')
+
+
+@command
+def test_get_possible_cocktails():
+    list_of_base_spirits = ['Vodka', 'Gin']
+
+    # get all cocktails
+    cocktails_ref = db.collection('cocktails')
+    docs = list(cocktails_ref.stream())
+    print('number of docs:', len(docs))
+
+    possible_cocktail_refs = []
+
+    for doc in tqdm(docs, desc="Processing cocktails"):
+        cocktail_data = doc.to_dict()
+
+        # Check if there's a 'ingredients' field
+        if 'ingredients' in cocktail_data:
+            for ingredient in cocktail_data['ingredients']:
+                debug(ingredient['isLiqueur'])
+                # Check if the ingredient is a liquor
+                if ingredient['isLiqueur']:
+                    # Check if the ingredient is a base spirit
+                    if ingredient['liqueurType'] in list_of_base_spirits:
+                        possible_cocktail_refs.append(cocktails_ref.document(doc.id))
+                        break
+
+                if ingredient['isSpirit']:
+                    # Check if the ingredient is a base spirit
+                    if ingredient['spiritType'] in list_of_base_spirits:
+                        possible_cocktail_refs.append(cocktails_ref.document(doc.id))
+                        break
+
+    print(f'{len(possible_cocktail_refs)} possible cocktails')
+
+
+@command
+def remove_background_from_alc_images():
+    blobs = list(bucket.list_blobs(prefix='images/'))
+
+    print(f'Found {len(blobs)} images')
+
+    updated_images = 0
+
+    for blob in tqdm(blobs, desc="Processing images"):
+        if blob.name.endswith(('.png', '.jpg', '.jpeg')):
+            image_data = blob.download_as_bytes()
+
+            # Remove the background
+            processed_image_data = remove_background(image_data)
+
+            # Upload the processed image back to Firebase Storage
+            processed_blob = bucket.blob(f'processed_images/{blob.name.split("/")[-1]}')
+            processed_blob.upload_from_string(processed_image_data, content_type='image/png')
+
+            updated_images += 1
+
+    print(f'Updated {updated_images} images')
 
 
 # End of the patches
