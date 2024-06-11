@@ -314,14 +314,20 @@ def remove_background_from_alc_images():
 
     print(f'Found {len(blobs)} images')
 
+    # Start from the 1045th image
+    blobs = blobs[2670:]
+
     updated_images = 0
 
     for blob in tqdm(blobs, desc="Processing images"):
         if blob.name.endswith(('.png', '.jpg', '.jpeg')):
             image_data = blob.download_as_bytes()
-
             # Remove the background
-            processed_image_data = remove_background(image_data)
+            try:
+                processed_image_data = remove_background(image_data)
+            except Exception as e:
+                print(f"Error removing background from image {blob.name}: {e}")
+                continue
 
             # Upload the processed image back to Firebase Storage
             processed_blob = bucket.blob(f'processed_images/{blob.name.split("/")[-1]}')
