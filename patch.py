@@ -337,6 +337,26 @@ def remove_background_from_alc_images():
 
     print(f'Updated {updated_images} images')
 
+@command
+def update_alc_images_to_bgless_path():
+    alcohols_ref = db.collection('Alcohols')
+    docs = list(alcohols_ref.stream())
+    print('number of docs:', len(docs))
+
+    alcohols_updated = 0
+
+    for doc in tqdm(docs, desc="Processing alcohols"):
+        alcohol_data = doc.to_dict()
+        # Check if there's a 'image' field
+        if 'image' in alcohol_data:
+            # Replace 'images' with 'processed_images' in the image URL
+            alcohol_data['image'] = alcohol_data['image'].replace('images', 'processed_images')
+            # Update the document in Firestore
+            alcohols_ref.document(doc.id).set(alcohol_data)
+            alcohols_updated += 1
+
+    print(f'Updated {alcohols_updated} alcohols')
+
 
 # End of the patches
 
