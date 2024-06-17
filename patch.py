@@ -337,6 +337,7 @@ def remove_background_from_alc_images():
 
     print(f'Updated {updated_images} images')
 
+
 @command
 def update_alc_images_to_bgless_path():
     alcohols_ref = db.collection('Alcohols')
@@ -357,6 +358,112 @@ def update_alc_images_to_bgless_path():
 
     print(f'Updated {alcohols_updated} alcohols')
 
+
+@command
+def update_alcohol_base_spirit():
+    base_spirits = [
+        'Irish Whiskey',
+        'American Whiskey',
+        'Scotch Whisky',
+        'Canadian Whisky',
+        'Japanese Whisky',
+        'Bourbon',
+        'Blanco Tequila',
+        'Repos ado Tequila',
+        'Anjo Tequila',
+        'Vodka',
+        'London Dry Gin',
+        'Floral Gin',
+        'Botanical Gin',
+        'White Rum',
+        'Gold Rum',
+        'Dark Rum',
+        'Spiced Rum',
+        'Mescal',
+        'Grappa',
+        'Pisco',
+        'None'
+    ]
+
+    alcohols_ref = db.collection('Alcohols')
+    docs = list(alcohols_ref.stream())
+    print('number of docs:', len(docs))
+
+    alcohols_updated = 0
+
+    for doc in tqdm(docs, desc="Processing alcohols"):
+        alcohol_data = doc.to_dict()
+        # Check if there's a 'spiritType' field
+        if 'baseSpirit' in alcohol_data:
+            # ask openai to set the baseSpirit
+            system_prompt = f"Given the following alcohol, please ONLY return one of the following options: {base_spirits}. If the alcohol does not fit into any of these categories, please return 'None'."
+            user_prompt = f'{alcohol_data["name"], alcohol_data["description"], alcohol_data["brand"], alcohol_data["country"]}'
+            alcohol_data['baseSpirit'] = askOpenAI(system_prompt, user_prompt)
+            # Update the document in Firestore
+            alcohols_ref.document(doc.id).set(alcohol_data)
+            alcohols_updated += 1
+
+    print(f'Updated {alcohols_updated} alcohols')
+
+
+@command
+def remove_bloat():
+    alcohols_ref = db.collection('Alcohols')
+    docs = list(alcohols_ref.stream())
+    print('number of docs:', len(docs))
+
+    quantity_alcohols_deleted = 0
+    size_alcohols_deleted = 0
+    image_alcohols_deleted = 0
+
+    for doc in tqdm(docs, desc="Processing alcohols"):
+        alcohol_data = doc.to_dict()
+        # Check if there's a 'spiritType' field
+        if ' x ' in alcohol_data['name']:
+            # delete the document
+            alcohols_ref.document(doc.id).delete()
+            # Update the document in Firestore
+            quantity_alcohols_deleted += 1
+
+        if 'Case' in alcohol_data['name']:
+            # delete the document
+            alcohols_ref.document(doc.id).delete()
+            # Update the document in Firestore
+            quantity_alcohols_deleted += 1
+
+        if alcohol_data['size'] == 0:
+            # delete the document
+            alcohols_ref.document(doc.id).delete()
+            # Update the document in Firestore
+            size_alcohols_deleted += 1
+
+        if not alcohol_data['image']:
+            # delete the document
+            alcohols_ref.document(doc.id).delete()
+            # Update the document in Firestore
+            image_alcohols_deleted += 1
+
+    print(f'Deleted {quantity_alcohols_deleted} quantity alcohols, {size_alcohols_deleted} no size alcohols, {image_alcohols_deleted} no image alcohols')
+
+@command
+def standardise_base_spirit_quotes():
+    alcohols_ref = db.collection('Alcohols')
+    docs = list(alcohols_ref.stream())
+    print('number of docs:', len(docs))
+
+    alcohols_updated = 0
+
+    for doc in tqdm(docs, desc="Processing alcohols"):
+        alcohol_data = doc.to_dict()
+        # Check if there's a 'baseSpirit' field
+        if 'baseSpirit' in alcohol_data:
+            # Replace single quotes with double quotes
+            alcohol_data['baseSpirit'] = alcohol_data['baseSpirit'].replace("'", '')
+            # Update the document in Firestore
+            alcohols_ref.document(doc.id).set(alcohol_data)
+            alcohols_updated += 1
+
+    print(f'Updated {alcohols_updated} alcohols')
 
 # End of the patches
 
