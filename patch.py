@@ -1,8 +1,13 @@
 import json
 from datetime import datetime
+from io import BytesIO
 
+import PIL
+import blurhash
 import cv2
+import numpy as np
 import requests
+from PIL import Image
 from devtools import debug
 from tqdm import tqdm
 
@@ -405,6 +410,53 @@ def update_alcohol_base_spirit():
 
     print(f'Updated {alcohols_updated} alcohols')
 
+@command
+def update_cocktail_ingredients_spirit():
+    base_spirits = [
+        'Irish Whiskey',
+        'American Whiskey',
+        'Scotch Whisky',
+        'Canadian Whisky',
+        'Japanese Whisky',
+        'Bourbon',
+        'Blanco Tequila',
+        'Repos ado Tequila',
+        'Anjo Tequila',
+        'Vodka',
+        'London Dry Gin',
+        'Floral Gin',
+        'Botanical Gin',
+        'White Rum',
+        'Gold Rum',
+        'Dark Rum',
+        'Spiced Rum',
+        'Mescal',
+        'Grappa',
+        'Pisco',
+        'None'
+    ]
+
+    cocktails_ref = db.collection('cocktails')
+    docs = list(cocktails_ref.stream())
+    print('number of docs:', len(docs))
+
+    cocktails_updated = 0
+
+    for doc in tqdm(docs, desc="Processing cocktails"):
+        cocktail_data = doc.to_dict()
+        # Check if there's a 'spiritType' field
+        if 'ingredients' in cocktail_data:
+            for ingredient in cocktail_data['ingredients']:
+                if 'isSpirit' in ingredient:
+                    # ask openai to set the baseSpirit
+                    system_prompt = f"Given the following alcohol, please ONLY return one of the following options: {base_spirits}, with no quotes. If the alcohol does not fit into any of these categories, please return 'None'."
+                    user_prompt = f'{ingredient}'
+                    ingredient.pop('baseSpirit', None)
+                    ingredient['spiritType'] = askOpenAI(system_prompt, user_prompt)
+                    # Update the document in Firestore
+                    cocktails_ref.document(doc.id).set(cocktail_data)
+                    cocktails_updated += 1
+
 
 @command
 def remove_bloat():
@@ -459,6 +511,83 @@ def standardise_base_spirit_quotes():
         if 'baseSpirit' in alcohol_data:
             # Replace single quotes with double quotes
             alcohol_data['baseSpirit'] = alcohol_data['baseSpirit'].replace("'", '')
+            # Update the document in Firestore
+            alcohols_ref.document(doc.id).set(alcohol_data)
+            alcohols_updated += 1
+
+    print(f'Updated {alcohols_updated} alcohols')
+
+
+@command
+def make_and_set_image_blur_hash():
+    # cocktails_ref = db.collection('cocktails')
+    # docs = list(cocktails_ref.stream())
+    # print('number of docs:', len(docs))
+    #
+    # cocktails_updated = 0
+    #
+    # for doc in tqdm(docs, desc="Processing cocktails"):
+    #     cocktail_data = doc.to_dict()
+    #     # Check if there's a 'image' field
+    #     if 'image' in cocktail_data:
+    #         # Get the image data
+    #         image_data = requests.get(cocktail_data['image']).content
+    #         # Open the image with PIL
+    #         image = Image.open(BytesIO(image_data))
+    #         # Get the blur hash
+    #         blur_hash = blurhash.encode(image, x_components=4, y_components=3)
+    #         # Set the blur hash
+    #         cocktail_data['imageBlurHash'] = blur_hash
+    #         # Update the document in Firestore
+    #         cocktails_ref.document(doc.id).set(cocktail_data)
+    #         cocktails_updated += 1
+    #
+    # print(f'Updated {cocktails_updated} cocktails')
+
+    alcohols_ref = db.collection('Alcohols')
+    docs = list(alcohols_ref.stream())
+    print('number of docs:', len(docs))
+
+    alcohols_updated = 0
+
+    for doc in tqdm(docs, desc="Processing alcohols"):
+        alcohol_data = doc.to_dict()
+        # Check if there's a 'image' field
+        if 'image' in alcohol_data:
+            # Get the image data
+            try:
+                image_data = requests.get(alcohol_data['image']).content
+                # Open the image with PIL
+                image = Image.open(BytesIO(image_data))
+                # Get the blur hash
+                blur_hash = blurhash.encode(image, x_components=4, y_components=3)
+                # Set the blur hash
+                alcohol_data['imageBlurHash'] = blur_hash
+                # Update the document in Firestore
+                alcohols_ref.document(doc.id).set(alcohol_data)
+                alcohols_updated += 1
+            except PIL.UnidentifiedImageError:
+                print(f"Unable to open image for alcohol {alcohol_data['name']}: {alcohol_data['image']}")
+
+    print(f'Updated {alcohols_updated} alcohols')
+
+@command
+def rewrite_alcohol_description():
+    alcohols_ref = db.collection('Alcohols')
+    docs = list(alcohols_ref.stream())
+    print('number of docs:', len(docs))
+
+    alcohols_updated = 0
+
+    for doc in tqdm(docs, desc="Processing alcohols"):
+        alcohol_data = doc.to_dict()
+        # Check if there's a 'description' field
+        if 'description' in alcohol_data:
+            # ask openai to summarise the description
+            system_prompt = 'rewrite the given sentence into a more concise and readable sentence, exclude any mention of VIP bottles and return only the new sentence'
+            user_prompt = f'{alcohol_data["description"]}'
+            alcohol_data['oldDescription'] = alcohol_data['description']
+            alcohol_data['description'] = askOpenAI(system_prompt, user_prompt)
             # Update the document in Firestore
             alcohols_ref.document(doc.id).set(alcohol_data)
             alcohols_updated += 1
