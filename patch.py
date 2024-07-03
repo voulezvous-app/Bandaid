@@ -16,7 +16,7 @@ from openai_setup import client, askOpenAI
 
 import click
 
-from utils import remove_background
+from utils import remove_background, move_image_to_bottom
 
 commands = []
 
@@ -534,6 +534,16 @@ def make_and_set_image_blur_hash():
     #         image_data = requests.get(cocktail_data['image']).content
     #         # Open the image with PIL
     #         image = Image.open(BytesIO(image_data))
+    #         # If the image has an alpha channel, replace it with white
+    #         if image.mode in ("RGBA", "LA") or (image.mode == "P" and "transparency" in image.info):
+    #             image = image.convert("RGBA")
+    #             r, g, b, a = image.split()
+    #             rgb_image = Image.merge('RGB', (r, g, b))
+    #
+    #             mask = Image.new('L', image.size, 255)
+    #             mask.paste(a, (0,0), a)
+    #
+    #             image = Image.composite(rgb_image, Image.new('RGB', image.size, 'white'), mask)
     #         # Get the blur hash
     #         blur_hash = blurhash.encode(image, x_components=4, y_components=3)
     #         # Set the blur hash
@@ -555,19 +565,34 @@ def make_and_set_image_blur_hash():
         # Check if there's a 'image' field
         if 'image' in alcohol_data:
             # Get the image data
+            response = requests.get(alcohol_data['image'])
+            if response.status_code != 200:
+                print(f"Unable to retrieve image from {alcohol_data['image']}")
+                continue
+            image_data = response.content
+            # Open the image with PIL
             try:
-                image_data = requests.get(alcohol_data['image']).content
-                # Open the image with PIL
                 image = Image.open(BytesIO(image_data))
-                # Get the blur hash
-                blur_hash = blurhash.encode(image, x_components=4, y_components=3)
-                # Set the blur hash
-                alcohol_data['imageBlurHash'] = blur_hash
-                # Update the document in Firestore
-                alcohols_ref.document(doc.id).set(alcohol_data)
-                alcohols_updated += 1
             except PIL.UnidentifiedImageError:
-                print(f"Unable to open image for alcohol {alcohol_data['name']}: {alcohol_data['image']}")
+                print(f"Unable to identify image from {alcohol_data['image']}")
+                continue
+            # If the image has an alpha channel, replace it with white
+            if image.mode in ("RGBA", "LA") or (image.mode == "P" and "transparency" in image.info):
+                image = image.convert("RGBA")
+                r, g, b, a = image.split()
+                rgb_image = Image.merge('RGB', (r, g, b))
+
+                mask = Image.new('L', image.size, 255)
+                mask.paste(a, (0,0), a)
+
+                image = Image.composite(rgb_image, Image.new('RGB', image.size, 'white'), mask)
+            # Get the blur hash
+            blur_hash = blurhash.encode(image, x_components=4, y_components=3)
+            # Set the blur hash
+            alcohol_data['imageBlurHash'] = blur_hash
+            # Update the document in Firestore
+            alcohols_ref.document(doc.id).set(alcohol_data)
+            alcohols_updated += 1
 
     print(f'Updated {alcohols_updated} alcohols')
 
@@ -593,6 +618,33 @@ def rewrite_alcohol_description():
             alcohols_updated += 1
 
     print(f'Updated {alcohols_updated} alcohols')
+
+@command
+def format_cocktail_images():
+    blobs = list(bucket.list_blobs(prefix='cocktail_images/'))
+
+    print(f'Found {len(blobs)} cocktail images')
+
+    updated_images = 0
+
+    for blob in tqdm(blobs, desc="modifying cocktail images"):
+        if blob.name.endswith(('.png', '.jpg', '.jpeg')):
+            image_data = blob.download_as_bytes()
+            # Remove the background
+            try:
+                processed_image_data = move_image_to_bottom(image_data)
+            except Exception as e:
+                print(f"Error modifying image {blob.name}: {e}")
+                continue
+
+            # Upload the processed image back to Firebase Storage
+            processed_blob = bucket.blob(f'modified_cocktail_images/{blob.name.split("/")[-1]}')
+            processed_blob.upload_from_string(processed_image_data, content_type='image/png')
+
+            updated_images += 1
+
+    print(f'Updated {updated_images} images')
+
 
 # End of the patches
 
