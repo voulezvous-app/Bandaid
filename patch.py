@@ -1,3 +1,4 @@
+import csv
 import json
 from datetime import datetime
 from io import BytesIO
@@ -410,6 +411,7 @@ def update_alcohol_base_spirit():
 
     print(f'Updated {alcohols_updated} alcohols')
 
+
 @command
 def update_cocktail_ingredients_spirit():
     base_spirits = [
@@ -495,7 +497,9 @@ def remove_bloat():
             # Update the document in Firestore
             image_alcohols_deleted += 1
 
-    print(f'Deleted {quantity_alcohols_deleted} quantity alcohols, {size_alcohols_deleted} no size alcohols, {image_alcohols_deleted} no image alcohols')
+    print(
+        f'Deleted {quantity_alcohols_deleted} quantity alcohols, {size_alcohols_deleted} no size alcohols, {image_alcohols_deleted} no image alcohols')
+
 
 @command
 def standardise_base_spirit_quotes():
@@ -583,7 +587,7 @@ def make_and_set_image_blur_hash():
                 rgb_image = Image.merge('RGB', (r, g, b))
 
                 mask = Image.new('L', image.size, 255)
-                mask.paste(a, (0,0), a)
+                mask.paste(a, (0, 0), a)
 
                 image = Image.composite(rgb_image, Image.new('RGB', image.size, 'white'), mask)
             # Get the blur hash
@@ -595,6 +599,7 @@ def make_and_set_image_blur_hash():
             alcohols_updated += 1
 
     print(f'Updated {alcohols_updated} alcohols')
+
 
 @command
 def rewrite_alcohol_description():
@@ -618,6 +623,7 @@ def rewrite_alcohol_description():
             alcohols_updated += 1
 
     print(f'Updated {alcohols_updated} alcohols')
+
 
 @command
 def format_cocktail_images():
@@ -644,6 +650,108 @@ def format_cocktail_images():
             updated_images += 1
 
     print(f'Updated {updated_images} images')
+
+
+@command
+def get_non_alcoholic_alcohols():
+    alcohols_ref = db.collection('Alcohols')
+    docs = list(alcohols_ref.stream())
+    print('number of docs:', len(docs))
+
+    non_alcoholic_alcohols = []
+
+    for doc in tqdm(docs, desc="Processing alcohols"):
+        alcohol_data = doc.to_dict()
+        # Check if there's a 'baseSpirit' field
+        if 'baseSpirit' in alcohol_data and alcohol_data['baseSpirit'] == 'None':
+            non_alcoholic_alcohols.append(alcohol_data)
+
+    print(f'Found {len(non_alcoholic_alcohols)} non-alcoholic alcohols')
+
+
+@command
+def clear_and_upload_alcohols():
+    # Clear the Alcohols collection
+    alcohols_ref = db.collection('Alcohols')
+    docs = list(alcohols_ref.stream())
+    print('number of docs:', len(docs))
+
+    for doc in tqdm(docs, desc="Clearing alcohols"):
+        alcohols_ref.document(doc.id).delete()
+
+    print(f'Deleted {len(docs)} alcohols')
+
+    # Upload data from updated_alcohols.csv
+    with open('updated_alcohols.csv', mode='r') as file:
+        reader = csv.DictReader(file)
+        for row in tqdm(reader, desc="Uploading alcohols"):
+            data = {'name': row['name'], 'brand': row['brand'], 'size': row['bottle_size'],
+                    'abv': row['abv'].split('%')[0], 'country': row['country'], 'description': row['description'],
+                    'price': row['price'], 'sweetToSourScale': row['sweetToSourScale'],
+                    'countryFlag': row['countryFlag'], 'clickCounter': row['clickCounter'],
+                    'savedCounter': row['savedCounter'], 'clickCounterWeekly': row['clickCounterWeekly'],
+                    'baseSpirit': row['baseSpirit'], 'isLiqueur': row['isLiqueur'], 'smell_tags': row['smell_tags'],
+                    'taste_tags': []}
+            try:
+                taste_tags = json.loads(row['taste_tags'])
+                data['taste_tags'] = ', '.join(tag['key'] for tag in taste_tags)
+            except json.JSONDecodeError as e:
+                print(f"Error decoding JSON for taste_tags in row {row}: {e}")
+                continue
+            data['barcode'] = row['barcode']
+            data['where_to_buy'] = row['where_to_buy']
+            data['image'] = row['image']
+            data['scrapedURL'] = row['scrapedURL']
+
+            alcohols_ref.add(data)
+
+    print('Uploaded all rows from updated_alcohols.csv')
+
+@command
+def upload_new_alcohols():
+    # Reference to the Alcohols collection
+    alcohols_ref = db.collection('Alcohols')
+
+    # Upload data from updated_alcohols.csv
+    with open('updated_alcohols.csv', mode='r') as file:
+        reader = csv.DictReader(file)
+        for row in tqdm(reader, desc="Uploading new alcohols"):
+            data = {
+                'name': row['name'],
+                'brand': row['brand'],
+                'size': row['bottle_size'],
+                'abv': row['abv'].split('%')[0],
+                'country': row['country'],
+                'description': row['description'],
+                'price': row['price'],
+                'sweetToSourScale': row['sweetToSourScale'],
+                'countryFlag': row['countryFlag'],
+                'clickCounter': row['clickCounter'],
+                'savedCounter': row['savedCounter'],
+                'clickCounterWeekly': row['clickCounterWeekly'],
+                'baseSpirit': row['baseSpirit'],
+                'isLiqueur': row['isLiqueur'],
+                'smell_tags': row['smell_tags'],
+                'taste_tags': [],
+                'barcode': row['barcode'],
+                'where_to_buy': row['where_to_buy'],
+                'image': row['image'],
+                'scrapedURL': row['scrapedURL']
+            }
+
+            # # Parse taste_tags as a list of dictionaries and concatenate 'key' values
+            # try:
+            #     taste_tags = json.loads(row['taste_tags'])
+            #     debug(taste_tags)
+            #     data['taste_tags'] = [tag['key'] for tag in taste_tags]
+            #     debug(data['taste_tags'])
+            # except json.JSONDecodeError as e:
+            #     print(f"Error decoding JSON for taste_tags in row {row}: {e}")
+            #     continue
+
+            alcohols_ref.add(data)
+
+    print('Uploaded all rows from updated_alcohols.csv')
 
 
 # End of the patches
